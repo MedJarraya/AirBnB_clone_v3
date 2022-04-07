@@ -1,86 +1,73 @@
 #!/usr/bin/python3
-""" States Views """
-from flask import jsonify, abort, request, Response, make_response
+"""sets up our api for state objs"""
 from api.v1.views import app_views
-from models.state import State
+from flask import jsonify, abort, request
 from models import storage
+from models.state import State
 
 
-@app_views.route('/states', strict_slashes=False)
-def states_all():
-    """
-    Return all states
-    """
-    all_states = storage.all('State').values()
-    states = []
-    for obj in all_states:
-        states.append(obj.to_dict())
-
-    return jsonify(states)
+@app_views.route('/states', strict_slashes=False, methods=['GET'])
+def states():
+    """returns all state objs"""
+    stateList = list(storage.all(State).values())
+    newList = []
+    for state in stateList:
+        state = state.to_dict()
+        newList.append(state)
+    return jsonify(newList)
 
 
-@app_views.route('/states/<state_id>', strict_slashes=False)
-def list_states(state_id):
-    """
-    Retrieves a State object
-    """
-    state = storage.get('State', state_id)
-    if state is None:
-        abort(404)
-    state = state.to_dict()
-
-    return jsonify(state)
-
-
-@app_views.route('/states/<state_id>', methods=['DELETE'],
-                 strict_slashes=False)
-def delete_state(state_id):
-    """
-    deletes a State object
-    """
-    state = storage.get('State', state_id)
-    if state is None:
+@app_views.route('/states/<state_id>', strict_slashes=False, methods=['GET'])
+def singleState(state_id=None):
+    """ returns specified state obj"""
+    allStates = storage.all()
+    if 'State.' + state_id in allStates:
+        return jsonify(allStates['State.' + state_id].to_dict())
+    else:
         abort(404)
 
-    storage.delete(state)
-    storage.save()
 
-    return make_response(jsonify({}), 200)
+@app_views.route('/states/<state_id>', strict_slashes=False,
+                 methods=['DELETE'])
+def deleteState(state_id=None):
+    """deletes specified state obj"""
+    allStates = storage.all(State)
+    if 'State.' + state_id in allStates:
+        storage.delete(allStates['State.' + state_id])
+        storage.save()
+        return jsonify({}), 200
+    else:
+        abort(404)
 
 
-@app_views.route('/states', methods=['POST'], strict_slashes=False)
-def post_state():
-    """
-    post a State object
-    """
-    if not request.json:
+@app_views.route('/states', strict_slashes=False, methods=['POST'])
+def postState():
+    """creates new state objs"""
+    newData = request.get_json(silent=True)
+    if newData is None:
         abort(400, "Not a JSON")
-    data = request.json
-    if 'name' not in data.keys():
+    if 'name' in newData.keys():
+        newState = State(**newData)
+        newState.save()
+        return jsonify(newState.to_dict()), 201
+    else:
         abort(400, "Missing name")
-    instance = State(**data)
-    storage.new(instance)
-    storage.save()
-
-    return make_response(jsonify(instance.to_dict()), 201)
 
 
-@app_views.route('/states/<state_id>', methods=['PUT'], strict_slashes=False)
-def update_state(state_id):
-    """
-    update a State object
-    """
-    state = storage.get('State', state_id)
-    if state is None:
-        abort(404)
-
-    if not request.json:
+@app_views.route('/states/<state_id>', strict_slashes=False,
+                 methods=['GET', 'PUT'])
+def putState(state_id=None):
+    """updates existing specified state obj"""
+    allStates = storage.all(State)
+    newData = request.get_json(silent=True)
+    if newData is None:
         abort(400, "Not a JSON")
-
-    data = request.json
-    for key, value in data.items():
-        setattr(state, key, value)
-
-    storage.save()
-
-    return make_response(jsonify(state.to_dict()), 200)
+    if 'State.' + state_id in allStates:
+        workingState = allStates['State.' + state_id]
+        for attr, value in newData.items():
+            if attr != 'id' and attr != 'created_at' and attr != 'updated_at':
+                setattr(workingState, attr, value)
+                workingState.save()
+        return jsonify(workingState.to_dict()), 200
+    else:
+        abort(404)
